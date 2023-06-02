@@ -1,14 +1,13 @@
-#include "stdio.h"
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
-// #include <unistd.h>
-// #include<sys/wait.h>
 #include <signal.h>
 #include <stddef.h>
 #include<fcntl.h>
-
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <signal.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #define MAX_CMD_BUFFER 255
 #define MAX_CMD_WORD 255
@@ -18,20 +17,17 @@ int status;
 int execute(char **args);
 char **divideCmd(char *args);
 int runShell(FILE *file);
-void sig_suspend();
-void sig_kill();
+void sig_suspend(int signal);
+void sig_kill(int signal);
+pid_t foreground_pgid = 0;  // Stores the foreground process group ID
 
 int runShell(FILE *file) {
     char buffer[MAX_CMD_BUFFER];
-    bool exit = false;
+    bool shouldExit = false;
     char **cmds;
     char cmd_hist[MAX_CMD_BUFFER] = "";
 
-    while (!exit) {
-
-        signal(SIGTSTP, sig_suspend);
-        signal(SIGINT, sig_kill);
-
+    while (!shouldExit) {
         if (file == stdin) {
             printf("icsh $ ");
             fflush(stdout);
@@ -56,20 +52,20 @@ int runShell(FILE *file) {
         if (buffer[0] != '#' && buffer[1] != '#') {
             cmds = divideCmd(buffer);
             if (cmds != NULL) {
-                //check exit
+                // Check exit
                 if (strcmp(cmds[0], "exit") == 0) {
                     printf("Adios\n");
                     int exitCode = 0;
                     if (cmds[1] != NULL) {
                         exitCode = atoi(cmds[1]);
                     }
-                    exit = true;
+                    shouldExit = true;
                     return exitCode;
                 } else if (strcmp(cmds[0], "!!") == 0 && strcmp(cmd_hist, "!!") != 0) {
                     char **prevCommand = divideCmd(cmd_hist);
-                    exit = execute(prevCommand);
+                    shouldExit = execute(prevCommand);
                 } else {
-                    exit = execute(cmds);
+                    shouldExit = execute(cmds);
                 }
             }
         }
@@ -81,6 +77,9 @@ int runShell(FILE *file) {
 }
 
 int main(int argc, char *argv[]) {
+    signal(SIGTSTP, SIG_IGN);  
+    signal(SIGINT, SIG_IGN);   
+
     if (argc == 2) {
         FILE *file = fopen(argv[1], "r");
         if (file == NULL) {
@@ -97,7 +96,6 @@ int main(int argc, char *argv[]) {
 }
 
 int execute(char **cmds) {
-
     if (cmds[0] == NULL) {
         return false;
     } else if (strcmp(cmds[0], "echo") == 0) {
@@ -108,30 +106,38 @@ int execute(char **cmds) {
         printf("\n");
         return false;
     } else {
-       	if ((pid = fork())< 0){
+        pid = fork();
+        if (pid < 0) {
             perror("Fork failed");
             exit(1);
-            
-        }
-    //If fork succeeds, the child process calls the execvp function kub to execute the external program 
-    //specified by the first cmd in the cmds array, passing the rest of the cmds as arguments to the program. 
-    //If execvp fails, it prints an error message and exits.
-        if(!pid){
-            status = execvp(cmds[0], cmds);
-            if (status == -1){
-                printf("Invalid Cmd\n");
-            }
+        } else if (pid == 0) {
+            signal(SIGTSTP, SIG_DFL);  // Set SIGTSTP to default in the child process
+            signal(SIGINT, SIG_DFL);   // Set SIGINT to default in the child process
+
+            execvp(cmds[0], cmds);
+            printf("Invalid Cmd\n");
             exit(1);
+        } else {
+            // Parent process
+            signal(SIGTSTP, SIG_IGN);  // Ignore SIGTSTP in the parent process
+            signal(SIGINT, SIG_IGN);   // Ignore SIGINT in the parent process
+
+            foreground_pgid = pid; // Update the foreground process group ID
+
+            int childStatus;
+            // Wait for the child process to complete or suspend
+            waitpid(pid, &childStatus, WUNTRACED);  
+
+            if (WIFSTOPPED(childStatus)) {
+                // Child process was suspended
+                printf("Process Suspended\n");
+            }
+
+            foreground_pgid = 0; // Reset the foreground process group ID
+
+            return false;
         }
-    //The parent process waits for the child process to complete using the waitpid function. 
-    //Once the child process has completed, the function returns false so that the shell keeps runnig kub.    
-        if(pid){
-            waitpid(pid, NULL, 0);
-            
-        }
-        return false;
     }
-    return false;
 }
 
 char **divideCmd(char *args) {
@@ -145,21 +151,25 @@ char **divideCmd(char *args) {
     while (cmd != NULL) {
         cmds[index] = cmd;
         index++;
-        if (index >= (MAX_CMD_WORD)) {
+        if (index >= MAX_CMD_WORD) {
             break;
         }
         cmd = strtok(NULL, " ");
     }
+    cmds[index] = NULL;  // Add a NULL terminator at the end of the command list
     return cmds;
 }
 
-void sig_suspend(){
-    kill(pid, SIGTSTP);
-    printf("Process Suspended\n");
-    runShell(stdin);
+void sig_suspend(int signal) {
+    if (foreground_pgid != 0) {
+        kill(-foreground_pgid, SIGTSTP);  // Suspend the foreground process group
+        printf("Process Suspended\n");
+    }
 }
 
-void sig_kill(){
-    kill(pid, SIGINT);
-    printf("Process Killed\n");
+void sig_kill(int signal) {
+    if (foreground_pgid != 0) {
+        kill(-foreground_pgid, SIGINT);  // Terminate the foreground process group
+        printf("Process Killed\n");
+    }
 }
