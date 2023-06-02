@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include<sys/wait.h>
 
 #define MAX_CMD_BUFFER 255
 #define MAX_CMD_WORD 255
@@ -79,18 +81,43 @@ int main(int argc, char *argv[]) {
     }
 }
 
-int execute(char **args) {
-    if (args[0] == NULL) {
+int execute(char **cmds) {
+
+    int pid;
+	int status;
+    
+    if (cmds[0] == NULL) {
         return false;
-    } else if (strcmp(args[0], "echo") == 0) {
-        printf("%s", args[1]);
-        for (int i = 2; args[i] != NULL; i++) {
-            printf(" %s", args[i]);
+    } else if (strcmp(cmds[0], "echo") == 0) {
+        printf("%s", cmds[1]);
+        for (int i = 2; cmds[i] != NULL; i++) {
+            printf(" %s", cmds[i]);
         }
         printf("\n");
         return false;
     } else {
-        printf("Invalid Command\n");
+       	if ((pid = fork())< 0){
+            perror("Fork failed");
+            exit(1);
+            
+        }
+    //If fork succeeds, the child process calls the execvp function kub to execute the external program 
+    //specified by the first cmd in the cmds array, passing the rest of the cmds as arguments to the program. 
+    //If execvp fails, it prints an error message and exits.
+        if(!pid){
+            status = execvp(cmds[0], cmds);
+            if (status == -1){
+                printf("Invalid Cmd\n");
+            }
+            exit(1);
+        }
+    //The parent process waits for the child process to complete using the waitpid function. 
+    //Once the child process has completed, the function returns false so that the shell keeps runnig kub.    
+        if(pid){
+            waitpid(pid, NULL, 0);
+            
+        }
+        return false;
     }
     return false;
 }
