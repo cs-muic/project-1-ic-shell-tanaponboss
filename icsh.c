@@ -2,14 +2,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <unistd.h>
-#include<sys/wait.h>
+// #include <unistd.h>
+// #include<sys/wait.h>
+#include <signal.h>
+#include <stddef.h>
+#include<fcntl.h>
+
+
 
 #define MAX_CMD_BUFFER 255
 #define MAX_CMD_WORD 255
 
+int pid;
+int status;
 int execute(char **args);
 char **divideCmd(char *args);
+int runShell(FILE *file);
+void sig_suspend();
+void sig_kill();
 
 int runShell(FILE *file) {
     char buffer[MAX_CMD_BUFFER];
@@ -18,6 +28,10 @@ int runShell(FILE *file) {
     char cmd_hist[MAX_CMD_BUFFER] = "";
 
     while (!exit) {
+
+        signal(SIGTSTP, sig_suspend);
+        signal(SIGINT, sig_kill);
+
         if (file == stdin) {
             printf("icsh $ ");
             fflush(stdout);
@@ -42,6 +56,7 @@ int runShell(FILE *file) {
         if (buffer[0] != '#' && buffer[1] != '#') {
             cmds = divideCmd(buffer);
             if (cmds != NULL) {
+                //check exit
                 if (strcmp(cmds[0], "exit") == 0) {
                     printf("Adios\n");
                     int exitCode = 0;
@@ -83,9 +98,6 @@ int main(int argc, char *argv[]) {
 
 int execute(char **cmds) {
 
-    int pid;
-	int status;
-    
     if (cmds[0] == NULL) {
         return false;
     } else if (strcmp(cmds[0], "echo") == 0) {
@@ -139,4 +151,15 @@ char **divideCmd(char *args) {
         cmd = strtok(NULL, " ");
     }
     return cmds;
+}
+
+void sig_suspend(){
+    kill(pid, SIGTSTP);
+    printf("Process Suspended\n");
+    runShell(stdin);
+}
+
+void sig_kill(){
+    kill(pid, SIGINT);
+    printf("Process Killed\n");
 }
