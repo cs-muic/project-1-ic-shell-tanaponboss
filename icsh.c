@@ -1,106 +1,115 @@
-/* ICCS227: Project 1: icsh
- * Name: Tanapon
- * StudentID: 
- */
-
 #include "stdio.h"
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h> 
-
-int execute(char **);
-char ** divideCmd(char *);
+#include <stdbool.h>
 
 #define MAX_CMD_BUFFER 255
 #define MAX_CMD_WORD 255
-int main() {
+
+int execute(char **args);
+char **divideCmd(char *args);
+
+int runShell(FILE *file) {
     char buffer[MAX_CMD_BUFFER];
     bool exit = false;
-    char** cmds;
+    char **cmds;
     char cmd_hist[MAX_CMD_BUFFER] = "";
 
     while (!exit) {
-        printf("icsh $ ");
-        fgets(buffer, 255, stdin);
+        if (file == stdin) {
+            printf("icsh $ ");
+            fflush(stdout);
+        }
 
-        //if cmd buffer = !! then perform the prev cmd
-        //compare if cmd buffer = !! and cmd_history arr is empty then print prev cmd not avialable      
-        
-        if (strcmp(buffer, "!!\n") == 0 && cmd_hist[0] == '\0'){
-			printf("prev cmd not available \n");
-		}
-        // if input buffer not empty then keep in cmd_hist
-        else if (strcmp(buffer, "!!\n") != 0){
-			strcpy(cmd_hist, buffer);		
-		}
+        if (!fgets(buffer, sizeof(buffer), file))
+            break;
 
-        cmds = divideCmd(buffer);
-        //exit
-        if(strcmp(cmds[0], "exit") == 0){
-			printf("Adios \n");
-			int arg1 = atoi(cmds[1]);
-			if (arg1 > 255){
-				return arg1 >> 8;
-			} else{
-			return arg1;
-			}
-		}
+        // Remove trailing newline character from the buffer
+        buffer[strcspn(buffer, "\n")] = '\0';
 
-		else if(strcmp(cmds[0], "!!\n") == 0 && strcmp(cmd_hist, "!!\n") != 0){
+        // If cmd buffer = !! and cmd_history arr is empty, print "prev cmd not available"
+        if (strcmp(buffer, "!!") == 0 && cmd_hist[0] == '\0') {
+            printf("prev cmd not available\n");
+        }
+        // If input buffer is not empty, keep it in cmd_hist
+        else if (strcmp(buffer, "!!") != 0) {
+            strcpy(cmd_hist, buffer);
+        }
 
-			char ** prevCommand = divideCmd(cmd_hist);
-			exit = execute(prevCommand);
-		}
-		else{		
-			exit = execute(cmds);
-		}		
-	}
-	return 0;
+        // Check if the line starts with "##" (comment) or is empty
+        if (buffer[0] != '#' && buffer[1] != '#') {
+            cmds = divideCmd(buffer);
+            if (cmds != NULL) {
+                if (strcmp(cmds[0], "exit") == 0) {
+                    printf("Adios\n");
+                    int exitCode = 0;
+                    if (cmds[1] != NULL) {
+                        exitCode = atoi(cmds[1]);
+                    }
+                    exit = true;
+                    return exitCode;
+                } else if (strcmp(cmds[0], "!!") == 0 && strcmp(cmd_hist, "!!") != 0) {
+                    char **prevCommand = divideCmd(cmd_hist);
+                    exit = execute(prevCommand);
+                } else {
+                    exit = execute(cmds);
+                }
+            }
+        }
+    }
+
+    fclose(file);
+
+    return 0;
 }
 
-
-int execute(char ** args){
-
-
-	if (args == NULL){
-		return false;
-	}
-	else if ( strcmp(args[0], "echo") == 0){
-		printf("%s", args[1]);
-		for(int i = 2; args[i] != NULL; i++){
-			printf(" %s", args[i]);
-		}
-		
-		return false;
-	}
-	else {
-		printf("Invalid Command\n");
-	}
-	return false;
-
+int main(int argc, char *argv[]) {
+    if (argc == 2) {
+        FILE *file = fopen(argv[1], "r");
+        if (file == NULL) {
+            printf("Error opening file: %s\n", argv[1]);
+            return 1;
+        }
+        int exitCode = runShell(file);
+        fclose(file);
+        return exitCode;
+    } else {
+        int exitCode = runShell(stdin);
+        return exitCode;
+    }
 }
 
-char ** divideCmd(char * args){
+int execute(char **args) {
+    if (args[0] == NULL) {
+        return false;
+    } else if (strcmp(args[0], "echo") == 0) {
+        printf("%s", args[1]);
+        for (int i = 2; args[i] != NULL; i++) {
+            printf(" %s", args[i]);
+        }
+        printf("\n");
+        return false;
+    } else {
+        printf("Invalid Command\n");
+    }
+    return false;
+}
 
+char **divideCmd(char *args) {
     if (args[0] == '\0') {
         return NULL;
     }
-	
-	int index = 0;
-    char * cmd;
-	char ** cmds = malloc(MAX_CMD_WORD * sizeof(char *));
-    //strtok function to split the input string into single cmd separated by spaces.
-	cmd = strtok(args, " ");
-	while(cmd != NULL){
-		cmds[index] = cmd;
-		index ++;
-        //The loop continues until either all cmds have been processed or the maximum number of cmds (MAX_CMD_WORD) has been reached.
-		if(index >= (MAX_CMD_WORD)){
-			break;
-		}
-        //sets cmd to the next cmd in the input string or to NULL if there are no more cmds. 
-		cmd = strtok(NULL, " ");
-	}
-	
-	return cmds;
+    int index = 0;
+    char *cmd;
+    char **cmds = malloc(MAX_CMD_WORD * sizeof(char *));
+    cmd = strtok(args, " ");
+    while (cmd != NULL) {
+        cmds[index] = cmd;
+        index++;
+        if (index >= (MAX_CMD_WORD)) {
+            break;
+        }
+        cmd = strtok(NULL, " ");
+    }
+    return cmds;
 }
