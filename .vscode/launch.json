@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+      {
+        "name": "(gdb) Launch",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "$/mnt/c/Users/tanapon/Desktop/PCSA/project-1-ic-shell-tanaponboss",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "$/mnt/c/Users/tanapon/Desktop/PCSA/project-1-ic-shell-tanaponboss",
+        "environment": [],
+        "externalConsole": true,
+        "MIMode": "gdb",
+        "miDebuggerPath": "gdb" // Modify this path if necessary
+      }
+    ]
+  }
+  

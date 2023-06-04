@@ -1,6 +1,6 @@
 #include <signal.h>
 #include <stddef.h>
-#include<fcntl.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/fcntl.h>
 
 #define MAX_CMD_BUFFER 255
 #define MAX_CMD_WORD 255
@@ -20,10 +21,13 @@ int runShell(FILE *file);
 void sig_suspend(int signal);
 void sig_kill(int signal);
 pid_t foreground_pgid = 0;  // Stores the foreground process group ID
+int inPos(char **args);
+int outPos(char **args);
+int IORedirection(char **list);
+bool shouldExit = false;
 
 int runShell(FILE *file) {
     char buffer[MAX_CMD_BUFFER];
-    bool shouldExit = false;
     char **cmds;
     char cmd_hist[MAX_CMD_BUFFER] = "";
 
@@ -33,6 +37,12 @@ int runShell(FILE *file) {
             fflush(stdout);
         }
 
+        // signal(SIGTSTP, SIG_IGN);
+        // signal(SIGINT, SIG_IGN);
+
+        signal(SIGTSTP, sig_suspend);  // Set SIGTSTP to default in the child process
+        signal(SIGINT, sig_kill);
+        
         if (!fgets(buffer, sizeof(buffer), file))
             break;
 
@@ -45,28 +55,32 @@ int runShell(FILE *file) {
         }
         // If input buffer is not empty, keep it in cmd_hist
         else if (strcmp(buffer, "!!") != 0) {
-            strcpy(cmd_hist, buffer);
+            strncpy(cmd_hist, buffer, sizeof(cmd_hist) - 1);
+        //To ensures that the cmd_hist array is properly null-terminated, even if the buffer array was longer than cmd_hist.
+            cmd_hist[sizeof(cmd_hist) - 1] = '\0';
         }
 
         // Check if the line starts with "##" (comment) or is empty
         if (buffer[0] != '#' && buffer[1] != '#') {
             cmds = divideCmd(buffer);
+
             if (cmds != NULL) {
-                // Check exit
-                if (strcmp(cmds[0], "exit") == 0) {
-                    printf("Adios\n");
-                    int exitCode = 0;
-                    if (cmds[1] != NULL) {
-                        exitCode = atoi(cmds[1]);
-                    }
-                    shouldExit = true;
+                printf("Parsed command: %s\n", cmds[0]); // Debug print
+                int exitCode = checkExit(cmds);
+                //handle exit
+                if (exitCode != -1 ) {
                     return exitCode;
-                } else if (strcmp(cmds[0], "!!") == 0 && strcmp(cmd_hist, "!!") != 0) {
+                }
+                //handle !!
+                if (strcmp(cmds[0], "!!") == 0 && strcmp(cmd_hist, "!!") != 0) {
                     char **prevCommand = divideCmd(cmd_hist);
                     shouldExit = execute(prevCommand);
                 } else {
                     shouldExit = execute(cmds);
                 }
+            }
+            else {
+                continue;
             }
         }
     }
@@ -77,8 +91,6 @@ int runShell(FILE *file) {
 }
 
 int main(int argc, char *argv[]) {
-    signal(SIGTSTP, SIG_IGN);  
-    signal(SIGINT, SIG_IGN);   
 
     if (argc == 2) {
         FILE *file = fopen(argv[1], "r");
@@ -94,9 +106,8 @@ int main(int argc, char *argv[]) {
         return exitCode;
     }
 }
-
-int execute(char **cmds) {
-    if (cmds[0] == NULL) {
+int execute(char** cmds) {
+    if (strcmp(cmds[0], "") == 0) {
         return false;
     } else if (strcmp(cmds[0], "echo") == 0) {
         printf("%s", cmds[1]);
@@ -111,9 +122,60 @@ int execute(char **cmds) {
             perror("Fork failed");
             exit(1);
         } else if (pid == 0) {
-            signal(SIGTSTP, SIG_DFL);  // Set SIGTSTP to default in the child process
-            signal(SIGINT, SIG_DFL);   // Set SIGINT to default in the child process
+            // signal(SIGTSTP, sig_suspend);  // Set SIGTSTP to default in the child process
+            // signal(SIGINT, sig_kill);   // Set SIGINT to default in the child process
 
+            int input = inPos(cmds);
+            int output = outPos(cmds);
+            printf("outPos returned: %d\n", output); // Debug print
+
+
+            if (input >= 0) {
+                // Input redirection is requested
+                char* filename = cmds[input + 1];
+                cmds[input] = NULL;  // Remove the "<" operator and filename from the command
+
+                // Open the file for reading
+                int fd = open(filename, O_RDONLY);
+                if (fd < 0) {
+                    perror("Failed to open file for reading");
+                    exit(1);
+                }
+
+                // Redirect stdin to the file
+                if (dup2(fd, STDIN_FILENO) < 0) {
+                    perror("Failed to redirect stdin to file");
+                    exit(1);
+                }
+
+                // Close the file descriptor
+                close(fd);
+            }
+
+            if (output >= 0) {
+                // Output redirection is requested
+                char* filename = cmds[output + 1];
+                printf("Output file: %s\n", filename); // Debug print
+                cmds[output] = NULL;  // Remove the ">" operator and filename from the command
+
+                // Open the file for writing
+                int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+                if (fd < 0) {
+                    perror("Failed to open file for writing");
+                    exit(1);
+                }
+
+                // Redirect stdout to the file
+                if (dup2(fd, STDOUT_FILENO) < 0) {
+                    perror("Failed to redirect stdout to file");
+                    exit(1);
+                }
+
+                // Close the file descriptor
+                close(fd);
+            }
+
+            // Execute the command
             execvp(cmds[0], cmds);
             printf("Invalid Cmd\n");
             exit(1);
@@ -122,22 +184,35 @@ int execute(char **cmds) {
             signal(SIGTSTP, SIG_IGN);  // Ignore SIGTSTP in the parent process
             signal(SIGINT, SIG_IGN);   // Ignore SIGINT in the parent process
 
-            foreground_pgid = pid; // Update the foreground process group ID
+            foreground_pgid = pid;  // Update the foreground process group ID
 
             int childStatus;
             // Wait for the child process to complete or suspend
-            waitpid(pid, &childStatus, WUNTRACED);  
+            waitpid(pid, &childStatus, WUNTRACED);
 
             if (WIFSTOPPED(childStatus)) {
                 // Child process was suspended
                 printf("Process Suspended\n");
             }
 
-            foreground_pgid = 0; // Reset the foreground process group ID
+            foreground_pgid = 0;  // Reset the foreground process group ID
 
             return false;
         }
     }
+}
+
+int checkExit(char **cmds) {
+    if (strcmp(cmds[0], "exit") == 0) {
+        printf("Adios\n");
+        int exitCode = atoi(cmds[1]);
+        shouldExit = true;
+        if (exitCode > 255) {
+            return exitCode >> 8;
+        }
+        else return exitCode;
+    }
+    else {return -1;}
 }
 
 char **divideCmd(char *args) {
@@ -149,22 +224,33 @@ char **divideCmd(char *args) {
     char **cmds = malloc(MAX_CMD_WORD * sizeof(char *));
     cmd = strtok(args, " ");
     while (cmd != NULL) {
+        // if (strcmp(cmd, ">") == 0 || strcmp(cmd, "<") == 0) {
+        //     // Redirection operator found, skip adding it to the command list
+        //     cmds[index] = NULL;
+        // } else {
+        //     cmds[index] = cmd;
+        // }
         cmds[index] = cmd;
         index++;
+
         if (index >= MAX_CMD_WORD) {
             break;
         }
+
         cmd = strtok(NULL, " ");
     }
+
     cmds[index] = NULL;  // Add a NULL terminator at the end of the command list
     return cmds;
 }
+
 
 void sig_suspend(int signal) {
     if (foreground_pgid != 0) {
         kill(-foreground_pgid, SIGTSTP);  // Suspend the foreground process group
         printf("Process Suspended\n");
     }
+    runShell(stdin);
 }
 
 void sig_kill(int signal) {
@@ -173,3 +259,62 @@ void sig_kill(int signal) {
         printf("Process Killed\n");
     }
 }
+
+// find out position
+int outPos(char **arr) {
+    for (int i = 0; arr[i] != NULL; i++) {
+        if (strcmp(arr[i], ">") == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// find in position
+int inPos(char **arr) {
+    for (int i = 0; arr[i] != NULL; i++) {
+        if (strcmp(arr[i], "<") == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int IORedirection(char** list) {
+    char* in = NULL;
+    char* out = NULL;
+
+    int input = inPos(list);
+    int output = outPos(list);
+
+    if (input >= 0) {
+        in = list[input + 1];
+        list[input] = NULL;
+    }
+
+    if (output >= 0) {
+        out = list[output + 1];
+        list[output] = NULL;
+    }
+
+    if (in != NULL) {
+        // Input redirection is requested
+        FILE* file = freopen(in, "r", stdin);
+        if (file == NULL) {
+            perror("Failed to open input file");
+            return 1;
+        }
+    }
+
+    if (out != NULL) {
+        // Output redirection is requested
+        FILE* file = freopen(out, "w", stdout);
+        if (file == NULL) {
+            perror("Failed to open output file");
+            return 1;
+        }
+    }
+
+    return 0;
+}
+

@@ -1,0 +1,16 @@
+total 128
+-rwxrwxrwx 1 tanapon tanapon   134 May 29 11:43 Makefile
+-rwxrwxrwx 1 tanapon tanapon   731 May 29 11:43 README.md
+drwxrwxrwx 1 tanapon tanapon   512 Jun  2 15:26 hello
+-rwxrwxrwx 1 tanapon tanapon 18232 Jun  5 01:25 icsh
+-rwxrwxrwx 1 tanapon tanapon  8885 Jun  5 01:25 icsh.c
+-rwxrwxrwx 1 tanapon tanapon 17464 Jun  2 13:57 icsh2
+-rwxrwxrwx 1 tanapon tanapon  3126 Jun  4 23:25 icsh2.c
+-rwxrwxrwx 1 tanapon tanapon  4058 Jun  2 15:32 icsh3.c
+-rwxrwxrwx 1 tanapon tanapon 17968 Jun  2 19:12 icsh4
+-rwxrwxrwx 1 tanapon tanapon  5040 Jun  2 20:41 icsh4.c
+-rwxrwxrwx 1 tanapon tanapon 17928 Jun  4 21:33 icsh5
+-rwxrwxrwx 1 tanapon tanapon  5987 Jun  4 23:25 icsh5.c
+-rwxrwxrwx 1 tanapon tanapon     0 Jun  5 01:28 some_file
+-rwxrwxrwx 1 tanapon tanapon   844 Jun  5 01:27 somefile
+-rwxrwxrwx 1 tanapon tanapon    43 Jun  2 12:58 test.sh
