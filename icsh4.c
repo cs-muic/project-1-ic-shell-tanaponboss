@@ -16,7 +16,7 @@ char **divideCmd(char *args);
 int runShell(FILE *file);
 void sig_suspend(int signal);
 void sig_kill(int signal);
-pid_t foreground_pgid = 0;  // Stores the foreground process group ID
+pid_t fg_pid = 0;  // Stores the foreground process group ID
 
 int runShell(FILE *file) {
     char buffer[MAX_CMD_BUFFER];
@@ -119,7 +119,7 @@ int execute(char **cmds) {
             signal(SIGTSTP, SIG_IGN);  // Ignore SIGTSTP in the parent process
             signal(SIGINT, SIG_IGN);   // Ignore SIGINT in the parent process
 
-            foreground_pgid = pid; // Update the foreground process group ID
+            fg_pid = pid; // Update the foreground process group ID
 
             int childStatus;
             // Wait for the child process to complete or suspend
@@ -130,7 +130,7 @@ int execute(char **cmds) {
                 printf("Process Suspended\n");
             }
 
-            foreground_pgid = 0; // Reset the foreground process group ID
+            fg_pid = 0; // Reset the foreground process group ID
 
             return false;
         }
@@ -158,15 +158,15 @@ char **divideCmd(char *args) {
 }
 
 void sig_suspend(int signal) {
-    if (foreground_pgid != 0) {
-        kill(-foreground_pgid, SIGTSTP);  // Suspend the foreground process group
+    if (fg_pid != 0) {
+        kill(-fg_pid, SIGTSTP);  // Suspend the foreground process group
         printf("Process Suspended\n");
     }
 }
 
 void sig_kill(int signal) {
-    if (foreground_pgid != 0) {
-        kill(-foreground_pgid, SIGINT);  // Terminate the foreground process group
+    if (fg_pid != 0) {
+        kill(-fg_pid, SIGINT);  // Terminate the foreground process group
         printf("Process Killed\n");
     }
 }
